@@ -113,7 +113,8 @@ public class MessageViewer {
     	peer = peerGroup.getDownloadPeer();
     	db = bitcoin.getDB();
 
-    	String alltx=peer.getTxAddress();
+    	//String alltx=peer.getTxAddress();
+    	String alltx=peer.getOpReturn();
     	refreshData();
         hashTagsLst.getSelectionModel().selectedIndexProperty().addListener(new ChangeListener<Number>() {
 
@@ -132,10 +133,31 @@ public class MessageViewer {
 	                	
 	                	Object hash=map.get(key);
 	                	HTreeMap opReturnMap = db.hashMap(peer.APP_OP_RETURN_MAP).createOrOpen();
-	                	HTreeMap opReturnTxMap = db.hashMap(peer.APP_OP_RETURN_TX_MAP).createOrOpen();                	
+	                	HTreeMap opReturnTxMap = db.hashMap(peer.APP_OP_RETURN_TX_MAP).createOrOpen();   
+	                	HTreeMap opReturnTxiMap = db.hashMap(peer.APP_OP_RETURN_TXI_MAP).createOrOpen();
 	                	HTreeMap opReturnAddressMap = db.hashMap(peer.APP_OP_RETURN_ADDRESS_MAP).createOrOpen();
-
-	                	msgs=msgs+opReturnTxMap.get(hash).toString()+"\n";
+	                	HTreeMap txmap = db.hashMap(peer.APP_TX_MAP).createOrOpen();
+	                	
+						String txAddress="";
+												
+						
+						int i=0;						
+						Sha256Hash hash256=(Sha256Hash) hash;
+						while (true) {
+							String txi= (String) opReturnTxiMap.get(hash256.toString()+":"+i);	
+							if (txi!=null) {
+								if (i>0) txAddress =txAddress+", ";
+								txAddress = txAddress + txmap.get(txi).toString();								
+							}
+							else 
+								break;
+							i++;
+							
+						}
+						
+						
+	                	//msgs=msgs+opReturnTxMap.get(hash).toString()+"\n";
+						msgs=msgs+txAddress+"\n";
 	                	msgs=msgs+date +"\n";
 	                	msgs=msgs+opReturnMap.get(hash).toString()+"\n\n";
 	                	
@@ -149,21 +171,17 @@ public class MessageViewer {
         
     }
     public void refreshData() {
-    	System.out.println("Refreshdata start");
+    	
     	ObservableList<Object> elements = FXCollections.observableArrayList();    	    	
         NavigableSet hashtagset = db.treeSet(peer.APP_HASHTAG_SET).createOrOpen();
         for (Object hashtag: hashtagset) {
         	elements.add(hashtag.toString().substring(1));
         }
-    	System.out.println("Refreshdata after for loop");
-        if (elements!=null) {
-        	System.out.println("Refreshdata elements not null");
-        	System.out.println(elements.size());
-        
+    	
+        if (elements!=null) {        	        
         	hashTagsLst.getItems().clear();
         	hashTagsLst.setItems(elements);    	
-        }
-        System.out.println("Refreshdata end");
+        }        
     }
 
     public void cancel(ActionEvent event) {
@@ -171,12 +189,13 @@ public class MessageViewer {
     }
 
     public void refresh(ActionEvent event) {    	
-        String alltx=peer.getTxAddress();
-        refreshData();
+        //String alltx=peer.getOpReturn();
+    	refreshData();
     }
     
     public void rebuild(ActionEvent event) {        	
-        String alltx=peer.getTxAddress();        
+        String alltx=peer.getOpReturn();
+        refreshData();
     }
     
     private void setText(String alltx) {

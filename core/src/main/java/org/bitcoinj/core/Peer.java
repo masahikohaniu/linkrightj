@@ -103,17 +103,21 @@ public class Peer extends PeerSocketHandler {
     public static final String APP_OP_RETURN_MAP = "OpReturnMap";
     public static final String APP_OP_RETURN_ADDRESS_MAP = "OpReturnAddressMap";
     public static final String APP_OP_RETURN_TX_MAP = "OpReturnTxMap";
+    public static final String APP_OP_RETURN_TXI_MAP = "OpReturnTxiMap";
     
     public static final String APP_HASHTAG_SET = "HashTagSet";
     public static final String APP_DATA_MAP = "DataMap";
     public static final String DATA_LATEST_HASH = "LatestHash";
+    public static final String DATA_MIN_HASH = "MinHash";
     
     public static final String APP_TX_MAP = "TxMap";
     public static final String TX_LATEST_HASH = "LatestTxHash";
-    
+    public static final String TX_MIN_HASH = "MinTxHash";    
     
     private HTreeMap map;
     private HTreeMap opReturnTxMap;
+    private HTreeMap opReturnTxiMap;
+
     private HTreeMap mapAddress;
     private boolean OpReturn_isRunning=false;
     private boolean OpReturn_tx_isRunning=false;
@@ -121,10 +125,12 @@ public class Peer extends PeerSocketHandler {
     private NavigableSet hashtagset;
     private HTreeMap dataMap;
     Object latestHash;
+    Object MinHash;
     Sha256Hash chainHeadHash;
     
     private HTreeMap txmap;
     Object latestTxHash;
+    Object MinTxHash;    
     Sha256Hash chainHeadTxHash;
     
     private int blockcount;
@@ -1916,7 +1922,7 @@ public class Peer extends PeerSocketHandler {
     public void setDownloadTxDependencies(int depth) {
         vDownloadTxDependencyDepth = depth;
     }
-    
+    /*
     public String getTxAddress() {    	        
         StoredBlock chainHead = blockChain.getChainHead();
         chainHeadTxHash=chainHead.getHeader().getHash();        
@@ -1925,57 +1931,81 @@ public class Peer extends PeerSocketHandler {
         	OpReturn_tx_isRunning=true;
 	        txmap = db.hashMap(APP_TX_MAP).createOrOpen();
 	        latestTxHash = db.hashMap(APP_DATA_MAP).createOrOpen().get(TX_LATEST_HASH);
-	        //log.info("latestHash: "+latestHash);
-	        if (!chainHeadTxHash.equals(latestTxHash)) getBlock(chainHeadTxHash);
+	        MinTxHash = db.hashMap(APP_DATA_MAP).createOrOpen().get(TX_MIN_HASH);
+	        HTreeMap dataMap=db.hashMap(APP_DATA_MAP).createOrOpen();
+	        dataMap.put(TX_LATEST_HASH, chainHeadTxHash);
+	        if (!chainHeadTxHash.equals(latestTxHash) ) {
+	        	getBlock(chainHeadTxHash);
+	        }else if (!params.getGenesisBlock().getHash().equals(MinTxHash)){
+	        	System.out.println("MinTxhash:" +(Sha256Hash)MinTxHash);
+	        	getBlock((Sha256Hash) MinTxHash);
+	        }
+	        		        
         }
     	return alltx;
     }
-    
+    */
     private void processBlockOpReturn(Block m) {
-    	if (OpReturn_tx_isRunning) {
+    	//System.out.println("Masahiko: processBlock");
+    	if (false) {    		
     		processBlockTxAddress(m);
     	}else if (OpReturn_isRunning) {    		
+    		
     		processBlockOpReturnData(m);
     	}    		    	
     }
 
     private void processBlockTxAddress(Block m) {
-    	//Block b = m;
+
     	for (Transaction tx :m.getTransactions()) {
     		if (!tx.isCoinBase()) {
     			int i=0;
     			for (TransactionOutput txout: tx.getOutputs()) {
     				Script script = txout.getScriptPubKey();
-    				if (script.getScriptType()==ScriptType.P2PKH) {
-	    				log.info("before loginfo: " +script.toString());
-	    				log.info("tx.getHastAsstring-address:"+ tx.getHashAsString()+":"+i +" , "+ script.getToAddress(params).toString() );
-	    				//log.info("after loginfo: ");
-						txmap.put(tx.getHashAsString()+":"+i,script.getToAddress(params).toString());
-						//log.info("after txmap: ");
-						i+=1;
-    				}
+    				if (script.getScriptType()==ScriptType.P2PKH) {						
+						txmap.put(tx.getHashAsString()+":"+i,script.getToAddress(params).toString());					
+    				}    				
+    				i+=1;
     			}        			
     		}    		
-    	}	    	
-    	
+    	}	    	    	
     	Sha256Hash prevHash = m.getPrevBlockHash();
-    	if (!prevHash.equals(params.getGenesisBlock().getHash()) && !prevHash.equals(latestTxHash)) {
+    	if (!prevHash.equals(params.getGenesisBlock().getHash()) && !prevHash.equals(latestTxHash) ) {
+    		if (!params.getGenesisBlock().getHash().equals(MinTxHash)) {
+	    		if (blockcount++ % 30 ==0 ) {
+	    			HTreeMap dataMap=db.hashMap(APP_DATA_MAP).createOrOpen();
+	    			dataMap.put(TX_MIN_HASH, prevHash);
+	    		}
+    		}
+    		log.info("processBlockTxAddress: "+m.getTime().toString());
     		getBlock(prevHash);
     	}
     	else {
-    		HTreeMap dataMap=db.hashMap(APP_DATA_MAP).createOrOpen();
-    		dataMap.put(TX_LATEST_HASH, chainHeadTxHash);
-    		log.info("tx chainHeadHash: "+chainHeadTxHash);    		
-    		OpReturn_tx_isRunning=false;
-    		getOpReturn();
+    		    		
+    		log.info("processBlockTxAddress second: "+m.getTime().toString());
+    		if (params.getGenesisBlock().getHash().equals(MinTxHash) || prevHash.equals(params.getGenesisBlock().getHash())) {
+    			OpReturn_tx_isRunning=false;
+    			HTreeMap dataMap=db.hashMap(APP_DATA_MAP).createOrOpen();
+    			dataMap.put(TX_MIN_HASH, params.getGenesisBlock().getHash());
+    			getOpReturn();
+    		}else {    			
+    			getBlock((Sha256Hash) MinTxHash);
+    		}
     	}        	
     }
-
     
     private void processBlockOpReturnData(Block m) {
-    	//Block b = m;
+    	
     	for (Transaction tx :m.getTransactions()) {
     		if (!tx.isCoinBase()) {
+    			int i=0;
+    			for (TransactionOutput txout: tx.getOutputs()) {
+    				Script script = txout.getScriptPubKey();
+    				if (script.getScriptType()==ScriptType.P2PKH) {						
+						txmap.put(tx.getHashAsString()+":"+i,script.getToAddress(params).toString());					
+    				}    				
+    				i+=1;
+    			}        	
     			for (TransactionOutput txout: tx.getOutputs()) {
     				Script script = txout.getScriptPubKey();        				
     				if (ScriptPattern.isOpReturn(script)){   
@@ -1983,13 +2013,26 @@ public class Peer extends PeerSocketHandler {
     						
     						if (chunk.isPushData()) {
     							String data =new String(chunk.data);
-    							//alltx+=data;
     							map.put(tx.getHash(), data);
+    							log.info(data);
+    							log.info(tx.getHash().toString());
 
-    							log.info("getpubkey::" +tx.getInput(0).getOutpoint().toString());
-    							String txAddress = txmap.get(tx.getInput(0).getOutpoint().toString()).toString();
-    							log.info("getpubkey::" +txAddress);
+    							i=0;
+    							for ( TransactionInput txi :tx.getInputs()) {
+        							log.info("tx address:"+txi.getOutpoint().toString());
+    								opReturnTxiMap.put(tx.getHash().toString()+":"+i, txi.getOutpoint().toString());
+    								i++;
+    							}
+    							/*
+    							String txAddress="";
+    							for ( TransactionInput ti :tx.getInputs()) {
+    								log.info("ti: "+ti.getOutpoint().toString()+"\n");
+	    							//if (txmap.get(ti.toString())!=null) 
+	    							txAddress = txAddress +", "+ txmap.get(ti.getOutpoint().toString()).toString();
+    							}
     							opReturnTxMap.put(tx.getHash(), txAddress);
+
+    							*/
     							
     							List<String> hashtags= getHashTags(data);
     							if (hashtags.size()==0) hashtags.add("#NoHashTag");
@@ -1998,10 +2041,8 @@ public class Peer extends PeerSocketHandler {
     								long timeSeconds=m.getTimeSeconds();
     								if (btmap.containsKey(timeSeconds)) {
     									timeSeconds++;
-    								}
-    								//log.info("gettimesedons::" +Long.toString(timeSeconds));    								    								
+    								}				    								
     								btmap.put(-1*timeSeconds, tx.getHash()); 
-    								//btmap.close();
     								hashtagset.add(hashtag);
     							}    							    								
     						}    						
@@ -2011,17 +2052,30 @@ public class Peer extends PeerSocketHandler {
     		}    		
     	}	    	
     	Sha256Hash prevHash = m.getPrevBlockHash();
-    	//log.info(blockcount++ + "latestHash: "+latestHash );
-    	if (!prevHash.equals(params.getGenesisBlock().getHash()) && !prevHash.equals(latestHash)) {
-    		//log.info(params.getGenesisBlock().getHash().toString());
-    		//log.info(Integer.toString(blockcount++));
+    	
+
+    	if (!prevHash.equals(params.getGenesisBlock().getHash()) && !prevHash.equals(latestHash) ) {
+    		if (!params.getGenesisBlock().getHash().equals(MinHash)) {
+	    		if (blockcount++ % 30 ==0 )  {
+	    			HTreeMap dataMap=db.hashMap(APP_DATA_MAP).createOrOpen();
+	
+	    			dataMap.put(DATA_MIN_HASH, prevHash);    		
+	    		}
+    		}
+    		log.info("processBlockOpReturnData: "+m.getTime().toString());
     		getBlock(prevHash);
     	}
     	else {
-    		HTreeMap dataMap=db.hashMap(APP_DATA_MAP).createOrOpen();
-    		dataMap.put(DATA_LATEST_HASH, chainHeadHash);
-    		//log.info("chainHeadHash: "+chainHeadHash);
-    		OpReturn_isRunning=false;
+    		log.info("processBlockOpReturnData second: "+m.getTime().toString());  	    		
+    		if (params.getGenesisBlock().getHash().equals(MinHash) || prevHash.equals(params.getGenesisBlock().getHash())) {
+    			OpReturn_isRunning=false;
+    			HTreeMap dataMap=db.hashMap(APP_DATA_MAP).createOrOpen();
+    			dataMap.put(DATA_MIN_HASH, params.getGenesisBlock().getHash());
+    			
+    		}else {    			
+    			getBlock((Sha256Hash) MinHash);
+    		}
+
     	}        	
     }
     
@@ -2033,12 +2087,21 @@ public class Peer extends PeerSocketHandler {
         if (!OpReturn_isRunning){
         	OpReturn_isRunning=true;
 	        map = db.hashMap(APP_OP_RETURN_MAP).createOrOpen();
+	        txmap = db.hashMap(APP_TX_MAP).createOrOpen();
+	        opReturnTxiMap = db.hashMap(APP_OP_RETURN_TXI_MAP).createOrOpen();
 	        opReturnTxMap=db.hashMap(APP_OP_RETURN_TX_MAP).createOrOpen();
 	        mapAddress = db.hashMap(APP_OP_RETURN_ADDRESS_MAP).createOrOpen();        
 	        hashtagset = db.treeSet(APP_HASHTAG_SET).createOrOpen();        
-	        latestHash = db.hashMap(APP_DATA_MAP).createOrOpen().get(DATA_LATEST_HASH);
-	        //log.info("latestHash: "+latestHash);
-	        if (!chainHeadHash.equals(latestHash)) getBlock(chainHeadHash);
+	        latestHash = db.hashMap(APP_DATA_MAP).createOrOpen().get(DATA_LATEST_HASH);	
+	        MinHash = db.hashMap(APP_DATA_MAP).createOrOpen().get(DATA_MIN_HASH);
+	        HTreeMap dataMap=db.hashMap(APP_DATA_MAP).createOrOpen();
+	        
+	        dataMap.put(DATA_LATEST_HASH, chainHeadHash);
+	        if (!chainHeadHash.equals(latestHash)) {
+	        	getBlock(chainHeadHash);
+	        } else if (!params.getGenesisBlock().getHash().equals(MinHash)){
+	        	getBlock((Sha256Hash) MinHash);
+	        }	        	        	
         }
     	return alltx;
     }
