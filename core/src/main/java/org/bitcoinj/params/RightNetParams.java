@@ -81,7 +81,7 @@ public class RightNetParams extends AbstractBitcoinNetParams {
         dnsSeeds = new String[] {                               
                 //"192.168.1.3",
         		"seed.linkright.org",
-        		"138.68.77.45",
+        		"host1.linkright.org",
     
         };
         /*
